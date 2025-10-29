@@ -1,12 +1,4 @@
 
-import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout
-from PyQt6.QtCore import QTimer, Qt, QSettings, QPointF, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
-from PyQt6.QtGui import QFont, QIcon, QPainter, QColor, QBrush, QPen
-import os
-from settings import SettingsWindow
-from styles import get_styles, FOCUS_COLOR, BREAK_COLOR
-
 class PulsingCircularTimer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -20,7 +12,6 @@ class PulsingCircularTimer(QWidget):
         self.animation.setEndValue(1.02)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutSine)
         self.animation.setLoopCount(-1) # Loop indefinitely
-        self.animation.start()
 
     @pyqtProperty(float)
     def scale(self):
@@ -73,7 +64,7 @@ class PomodoroApp(QWidget):
 
         self.current_stage = "focus"
         self.pomodoros_completed = 0
-        self.is_paused = True
+        self.is_paused = True # Start paused
 
         self.time_left = self.focus_time * 60
         self.timer = QTimer(self)
@@ -158,15 +149,16 @@ class PomodoroApp(QWidget):
                 self.next_stage()
 
     def start_timer(self):
-        self.is_paused = not self.is_paused
         if self.is_paused:
+            self.is_paused = False
+            self.timer.start(1000)
+            self.circular_timer.animation.start() # Start animation when timer starts
+            self.start_button.setText("Pause")
+        else:
+            self.is_paused = True
             self.timer.stop()
             self.circular_timer.animation.pause()
             self.start_button.setText("Continue")
-        else:
-            self.timer.start(1000)
-            self.circular_timer.animation.resume()
-            self.start_button.setText("Pause")
 
     def reset_timer(self):
         self.timer.stop()
@@ -177,7 +169,7 @@ class PomodoroApp(QWidget):
         self.update_ui()
         self.start_button.setText("Start")
         self.update_colors()
-        self.circular_timer.animation.pause()
+        self.circular_timer.animation.stop() # Stop animation on reset
 
 
     def next_stage(self):
@@ -198,6 +190,7 @@ class PomodoroApp(QWidget):
         self.update_ui()
         self.update_colors()
         self.send_notification()
+        self.circular_timer.animation.stop() # Stop animation when stage changes, will be started again by start_timer
 
     def update_ui(self):
         total_time = self.get_current_stage_duration()
