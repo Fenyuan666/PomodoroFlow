@@ -1,18 +1,35 @@
 
 import sys
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout
-from PyQt6.QtCore import QTimer, Qt, QSettings, QPointF
+from PyQt6.QtCore import QTimer, Qt, QSettings, QPointF, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
 from PyQt6.QtGui import QFont, QIcon, QPainter, QColor, QBrush, QPen
 import os
 from settings import SettingsWindow
+from styles import get_styles, FOCUS_COLOR, BREAK_COLOR
 
-class CircularTimer(QWidget):
+class PulsingCircularTimer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.progress = 1.0
-        self.focus_color = QColor("#e74c3c")
-        self.break_color = QColor("#2ecc71")
-        self.current_color = self.focus_color
+        self.current_color = QColor(FOCUS_COLOR)
+        self._scale = 1.0 # Internal scale variable
+
+        self.animation = QPropertyAnimation(self, b"scale") # Animate the registered 'scale' property
+        self.animation.setDuration(1000)
+        self.animation.setStartValue(1.0)
+        self.animation.setEndValue(1.02)
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self.animation.setLoopCount(-1) # Loop indefinitely
+        self.animation.start()
+
+    @pyqtProperty(float)
+    def scale(self):
+        return self._scale
+
+    @scale.setter
+    def scale(self, scale):
+        self._scale = scale
+        self.update()
 
     def set_progress(self, progress):
         self.progress = progress
@@ -27,32 +44,36 @@ class CircularTimer(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         rect = self.rect()
-        side = min(rect.width(), rect.height())
+        center = rect.center()
+        radius = min(rect.width(), rect.height()) / 2 * self._scale
         
+        draw_rect = QRect(int(center.x() - radius), int(center.y() - radius), int(radius * 2), int(radius * 2))
+
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#f0f0f0"))
-        painter.drawEllipse(rect)
+        painter.setBrush(QColor("#eee8d5"))
+        painter.drawEllipse(draw_rect)
 
         painter.setBrush(self.current_color)
         
         start_angle = 90 * 16
         span_angle = -int(self.progress * 360 * 16)
         
-        painter.drawPie(rect, start_angle, span_angle)
+        painter.drawPie(draw_rect, start_angle, span_angle)
 
 
 class PomodoroApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Pomodoro Flow")
-        self.setFixedSize(400, 500)
+        self.setFixedSize(400, 530)
+        self.setWindowIcon(QIcon("🍅"))
 
         self.settings = QSettings("PomodoroFlow", "AppSettings")
         self.load_settings()
 
         self.current_stage = "focus"
         self.pomodoros_completed = 0
-        self.is_paused = False
+        self.is_paused = True
 
         self.time_left = self.focus_time * 60
         self.timer = QTimer(self)
@@ -60,18 +81,19 @@ class PomodoroApp(QWidget):
 
         self.init_ui()
         self.update_colors()
+        self.update_ui()
 
     def init_ui(self):
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setContentsMargins(25, 25, 25, 25)
         main_layout.setSpacing(20)
 
         # Timer display
         timer_layout = QGridLayout()
-        self.circular_timer = CircularTimer()
+        self.circular_timer = PulsingCircularTimer()
         self.timer_display = QLabel(self.format_time(self.time_left))
+        self.timer_display.setObjectName("timer_display")
         self.timer_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.timer_display.setFont(QFont("Arial", 60, QFont.Weight.Bold))
         
         timer_layout.addWidget(self.circular_timer, 0, 0)
         timer_layout.addWidget(self.timer_display, 0, 0)
@@ -79,13 +101,13 @@ class PomodoroApp(QWidget):
 
         # Stage label
         self.stage_label = QLabel(self.get_stage_text())
+        self.stage_label.setObjectName("stage_label")
         self.stage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.stage_label.setFont(QFont("Arial", 20))
 
         # Pomodoro counter
-        self.pomodoro_counter = QLabel(f"🍅 {self.pomodoros_completed} / {self.long_break_interval}")
+        self.pomodoro_counter = QLabel()
+        self.pomodoro_counter.setObjectName("pomodoro_counter")
         self.pomodoro_counter.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pomodoro_counter.setFont(QFont("Arial", 16))
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -95,6 +117,7 @@ class PomodoroApp(QWidget):
         self.reset_button.clicked.connect(self.reset_timer)
         
         self.settings_button = QPushButton("⚙️")
+        self.settings_button.setFixedWidth(50)
         self.settings_button.clicked.connect(self.open_settings)
 
 
@@ -102,13 +125,12 @@ class PomodoroApp(QWidget):
         button_layout.addWidget(self.reset_button)
 
         top_layout = QHBoxLayout()
-        top_layout.setContentsMargins(0, 10, 0, 0)
         top_layout.addStretch()
         top_layout.addWidget(self.settings_button)
 
 
         main_layout.addLayout(top_layout)
-        main_layout.addLayout(timer_layout)
+        main_layout.addLayout(timer_layout, 1) # Give the timer layout more space
         main_layout.addWidget(self.stage_label)
         main_layout.addWidget(self.pomodoro_counter)
         main_layout.addLayout(button_layout)
@@ -121,11 +143,11 @@ class PomodoroApp(QWidget):
 
     def get_stage_text(self):
         if self.current_stage == "focus":
-            return "Focus Work"
+            return "🍅 Focus Time 🍅"
         elif self.current_stage == "short_break":
-            return "Short Break"
+            return "☕️ Short Break ☕️"
         elif self.current_stage == "long_break":
-            return "Long Break"
+            return "🎉 Long Break 🎉"
 
     def update_timer(self):
         if not self.is_paused:
@@ -136,24 +158,26 @@ class PomodoroApp(QWidget):
                 self.next_stage()
 
     def start_timer(self):
-        if self.timer.isActive() and not self.is_paused:
-            self.is_paused = True
+        self.is_paused = not self.is_paused
+        if self.is_paused:
             self.timer.stop()
+            self.circular_timer.animation.pause()
             self.start_button.setText("Continue")
         else:
-            self.is_paused = False
             self.timer.start(1000)
+            self.circular_timer.animation.resume()
             self.start_button.setText("Pause")
 
     def reset_timer(self):
         self.timer.stop()
-        self.is_paused = False
+        self.is_paused = True
         self.current_stage = "focus"
         self.pomodoros_completed = 0
         self.time_left = self.focus_time * 60
         self.update_ui()
         self.start_button.setText("Start")
         self.update_colors()
+        self.circular_timer.animation.pause()
 
 
     def next_stage(self):
@@ -169,24 +193,33 @@ class PomodoroApp(QWidget):
             self.current_stage = "focus"
             self.time_left = self.focus_time * 60
         
+        self.is_paused = True
+        self.start_button.setText("Start")
         self.update_ui()
         self.update_colors()
         self.send_notification()
-        self.timer.start(1000)
 
     def update_ui(self):
         total_time = self.get_current_stage_duration()
-        progress = self.time_left / total_time
-        self.circular_timer.set_progress(progress)
+        if total_time > 0:
+            progress = self.time_left / total_time
+            self.circular_timer.set_progress(progress)
+        
         self.timer_display.setText(self.format_time(self.time_left))
         self.stage_label.setText(self.get_stage_text())
-        self.pomodoro_counter.setText(f"🍅 {self.pomodoros_completed % self.long_break_interval} / {self.long_break_interval}")
+        
+        pomodoros_to_show = self.pomodoros_completed % self.long_break_interval
+        if self.pomodoros_completed > 0 and pomodoros_to_show == 0 and self.current_stage != 'focus':
+            pomodoros_to_show = self.long_break_interval
+            
+        self.pomodoro_counter.setText("🍅" * pomodoros_to_show + "🤍" * (self.long_break_interval - pomodoros_to_show))
+
 
     def update_colors(self):
         if self.current_stage == "focus":
-            self.circular_timer.set_color(QColor("#e74c3c"))
+            self.circular_timer.set_color(QColor(FOCUS_COLOR))
         else:
-            self.circular_timer.set_color(QColor("#2ecc71"))
+            self.circular_timer.set_color(QColor(BREAK_COLOR))
 
     def get_current_stage_duration(self):
         if self.current_stage == "focus":
@@ -198,7 +231,7 @@ class PomodoroApp(QWidget):
 
     def send_notification(self):
         message = f"Time for {self.get_stage_text()}!"
-        os.system(f'osascript -e \'display notification "{message}" with title "Pomodoro Flow"\'')
+        os.system(f'osascript -e \'display notification "{message}" with title "Pomodoro Flow" sound name "Submarine"\'')
 
     def open_settings(self):
         settings_dialog = SettingsWindow(self)
@@ -215,6 +248,7 @@ class PomodoroApp(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(get_styles())
     window = PomodoroApp()
     window.show()
     sys.exit(app.exec())
