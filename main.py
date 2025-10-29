@@ -1,3 +1,10 @@
+import sys
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout
+from PyQt6.QtCore import QTimer, Qt, QSettings, QPointF, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
+from PyQt6.QtGui import QFont, QIcon, QPainter, QColor, QBrush, QPen
+import os
+from settings import SettingsWindow
+from styles import get_styles, FOCUS_COLOR, BREAK_COLOR
 
 class PulsingCircularTimer(QWidget):
     def __init__(self, parent=None):
@@ -224,7 +231,7 @@ class PomodoroApp(QWidget):
 
     def send_notification(self):
         message = f"Time for {self.get_stage_text()}!"
-        os.system(f'osascript -e \'display notification "{message}" with title "Pomodoro Flow" sound name "Submarine"\'')
+        os.system(f'osascript -e \'display notification \"{message}\" with title \"Pomodoro Flow\" sound name \"Submarine\"\' ')
 
     def open_settings(self):
         settings_dialog = SettingsWindow(self)
