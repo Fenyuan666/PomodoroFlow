@@ -1,10 +1,39 @@
 import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QGridLayout, QDialog
 from PyQt6.QtCore import QTimer, Qt, QSettings, QPointF, QPropertyAnimation, QEasingCurve, QRect, pyqtProperty
 from PyQt6.QtGui import QFont, QIcon, QPainter, QColor, QBrush, QPen
 import os
 from settings import SettingsWindow
 from styles import get_styles, FOCUS_COLOR, BREAK_COLOR
+
+class AlertDialog(QDialog):
+    def __init__(self, message, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Pomodoro Flow")
+        self.setModal(True)
+        self.setObjectName("alert_dialog")
+        self.setFixedSize(300, 150)
+
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        message_label = QLabel(message)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_label.setWordWrap(True)
+        message_label.setObjectName("alert_message")
+
+        ok_button = QPushButton("OK")
+        ok_button.clicked.connect(self.accept)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(ok_button)
+        button_layout.addStretch()
+
+        layout.addWidget(message_label)
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
 
 class PulsingCircularTimer(QWidget):
     def __init__(self, parent=None):
@@ -230,20 +259,34 @@ class PomodoroApp(QWidget):
             return self.long_break_time * 60
 
     def send_notification(self):
-        message = f"Time for {self.get_stage_text()}!"
-        os.system(f'osascript -e \'display notification \"{message}\" with title \"Pomodoro Flow\" sound name \"Submarine\"\' ')
+        if self.current_stage == "focus":
+            message = "休息时间结束，准备开始工作！"
+        else:
+            message = "工作时间结束，请开始休息！"
+        
+        # Play sound
+        if os.path.exists(self.notification_sound):
+            os.system(f"afplay \"{self.notification_sound}\" &")
+
+        # Show custom dialog
+        alert = AlertDialog(message, self)
+        alert.exec()
+
 
     def open_settings(self):
         settings_dialog = SettingsWindow(self)
         if settings_dialog.exec():
             self.load_settings()
-            self.reset_timer()
+            # No need to reset the entire timer, just apply settings.
+            self.update_ui() 
+            self.update_colors()
             
     def load_settings(self):
         self.focus_time = self.settings.value("focus_time", 25, type=int)
         self.short_break_time = self.settings.value("short_break_time", 5, type=int)
         self.long_break_time = self.settings.value("long_break_time", 15, type=int)
         self.long_break_interval = self.settings.value("long_break_interval", 4, type=int)
+        self.notification_sound = self.settings.value("notification_sound", "notification.wav")
 
 
 if __name__ == "__main__":
